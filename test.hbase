@@ -1,0 +1,4 @@
+create 'test', 'd'
+put 'test', '0', 'd:a', 'some'
+put 'test', '1', 'd:a', 'string'
+scan 'test', {MAX_RESULT_SIZE => 10}

@@ -384,6 +384,8 @@ public class RSRpcServices
    */
   private final boolean rejectRowsWithSizeOverThreshold;
 
+  private final int delayScanNextMs;
+
   final AtomicBoolean clearCompactionQueues = new AtomicBoolean(false);
 
   private AccessChecker accessChecker;
@@ -1215,6 +1217,7 @@ public class RSRpcServices
       conf.getInt(HConstants.BATCH_ROWS_THRESHOLD_NAME, HConstants.BATCH_ROWS_THRESHOLD_DEFAULT);
     rejectRowsWithSizeOverThreshold =
       conf.getBoolean(REJECT_BATCH_ROWS_OVER_THRESHOLD, DEFAULT_REJECT_BATCH_ROWS_OVER_THRESHOLD);
+    delayScanNextMs = conf.getInt("hbase.rpc.delayscannext", 0);
 
     final RpcSchedulerFactory rpcSchedulerFactory;
     try {
@@ -3570,6 +3573,8 @@ public class RSRpcServices
       }
     } catch (IOException e) {
       if (e == SCANNER_ALREADY_CLOSED) {
+        assert request.hasScannerId();
+        LOG.info("Scanner id={} already closed", request.getScannerId());
         // Now we will close scanner automatically if there are no more results for this region but
         // the old client will still send a close request to us. Just ignore it and return.
         return builder.build();
@@ -3636,6 +3641,14 @@ public class RSRpcServices
     MutableObject<Object> lastBlock = new MutableObject<>();
     boolean scannerClosed = false;
     try {
+      if (delayScanNextMs > 0 && request.hasScannerId()) {
+        try {
+          Thread.sleep(delayScanNextMs);
+        } catch (InterruptedException ex) {
+          LOG.info("Sleep interrupted", ex);
+        }
+      }
+
       List<Result> results = new ArrayList<>(Math.min(rows, 512));
       if (rows > 0) {
         boolean done = false;

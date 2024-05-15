@@ -40,13 +40,13 @@ import org.apache.hadoop.hbase.UnknownScannerException;
 import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
 import org.apache.hadoop.hbase.exceptions.ScannerResetException;
 import org.apache.hadoop.hbase.ipc.HBaseRpcController;
+import org.apache.hadoop.hbase.ipc.RpcClient;
 import org.apache.hadoop.hbase.ipc.RpcControllerFactory;
 import org.apache.hadoop.hbase.regionserver.RegionServerStoppedException;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.ResponseConverter;
@@ -74,6 +74,7 @@ public class ScannerCallable extends ClientServiceCallable<Result[]> {
   protected ScanMetrics scanMetrics;
   private boolean logScannerActivity = false;
   private int logCutOffLatency = 1000;
+  private int shutdownConnAfterMs = -1;
   protected final int id;
 
   enum MoreResults {
@@ -117,6 +118,7 @@ public class ScannerCallable extends ClientServiceCallable<Result[]> {
     Configuration conf = connection.getConfiguration();
     logScannerActivity = conf.getBoolean(LOG_SCANNER_ACTIVITY, false);
     logCutOffLatency = conf.getInt(LOG_SCANNER_LATENCY_CUTOFF, 1000);
+    shutdownConnAfterMs = conf.getInt("hbase.ipc.client.shutdownconnafter", -1);
     this.rpcControllerFactory = rpcControllerFactory;
   }
 
@@ -191,14 +193,15 @@ public class ScannerCallable extends ClientServiceCallable<Result[]> {
       this.scanMetrics != null, renew, scan.getLimit());
     try {
       ScanResponse response = getStub().scan(getRpcController(), request);
+      assert this.scannerId == response.getScannerId();
       nextCallSeq++;
       return response;
     } catch (Exception e) {
       IOException ioe = ProtobufUtil.handleRemoteException(e);
       if (logScannerActivity) {
         LOG.info(
-          "Got exception making request " + ProtobufUtil.toText(request) + " to " + getLocation(),
-          e);
+          "Got exception making request scanner=" + scannerId + " " + ProtobufUtil.toText(request)
+          + " to " + getLocation(), e);
       }
       if (logScannerActivity) {
         if (ioe instanceof UnknownScannerException) {
@@ -256,9 +259,27 @@ public class ScannerCallable extends ClientServiceCallable<Result[]> {
     }
     ScanResponse response;
     if (this.scannerId == -1L) {
+      LOG.info("Opening scanner {}", getTableName());
       response = openScanner();
     } else {
+      LOG.info("Next id={} {}", this.scannerId, getTableName());
+      if (shutdownConnAfterMs >= 0) {
+        int shutdownIn = shutdownConnAfterMs;
+        // Reset so we only do this once per query.
+        shutdownConnAfterMs = -1;
+        RpcClient rpcClient = ((ConnectionImplementation)getConnection()).getRpcClient();
+        new Thread(() -> {
+          try {
+            Thread.sleep(shutdownIn);
+          } catch (InterruptedException e) {
+            LOG.info("Sleep interrupted", e);
+          }
+          LOG.info("Stopping scanner connection");
+          rpcClient.shutdownAllConnections();
+        }).start();
+      }
       response = next();
+      LOG.info("Response(id={}): {}", this.scannerId, response);
     }
     long timestamp = EnvironmentEdgeManager.currentTime();
     boolean isHeartBeat = response.hasHeartbeatMessage() && response.getHeartbeatMessage();

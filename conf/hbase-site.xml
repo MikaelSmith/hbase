@@ -51,4 +51,26 @@
     <name>hbase.unsafe.stream.capability.enforce</name>
     <value>false</value>
   </property>
+
+  <property>
+    <name>hbase.client.log.scanner.activity</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hbase.client.log.scanner.latency.cutoff</name>
+    <value>-1</value>
+  </property>
+  <property>
+    <name>hbase.client.start.log.errors.counter</name>
+    <value>-1</value>
+  </property>
+
+  <property>
+    <name>hbase.ipc.client.shutdownconnafter</name>
+    <value>10</value>
+  </property>
+  <property>
+    <name>hbase.rpc.delayscannext</name>
+    <value>50</value>
+  </property>
 </configuration>

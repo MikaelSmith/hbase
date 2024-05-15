@@ -454,6 +454,14 @@ public abstract class AbstractRpcClient<T extends RpcConnection> implements RpcC
     return Address.fromParts(sn.getHostname(), sn.getPort());
   }
 
+  public void shutdownAllConnections() {
+    synchronized (connections) {
+      for (T conn : connections.values()) {
+        conn.shutdown();
+      }
+    }
+  }
+
   /**
    * Interrupt the connections to the given ip:port server. This should be called if the server is
    * known as actually dead. This will not prevent current operation to be retried, and, depending

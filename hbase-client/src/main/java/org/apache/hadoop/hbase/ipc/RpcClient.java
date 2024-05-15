@@ -73,6 +73,8 @@ public interface RpcClient extends Closeable {
    */
   RpcChannel createRpcChannel(final ServerName sn, final User user, int rpcTimeout);
 
+  void shutdownAllConnections();
+
   /**
    * Interrupt the connections to the given server. This should be called if the server is known as
    * actually dead. This will not prevent current operation to be retried, and, depending on their

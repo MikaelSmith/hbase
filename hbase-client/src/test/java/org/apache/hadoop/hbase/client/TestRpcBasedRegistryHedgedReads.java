@@ -109,6 +109,10 @@ public class TestRpcBasedRegistryHedgedReads {
     }
 
     @Override
+    public void shutdownAllConnections() {
+    }
+
+    @Override
     public void cancelConnections(ServerName sn) {
     }
 
